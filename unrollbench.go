@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -192,6 +193,10 @@ func isBenchForLoop(n ast.Stmt) (is bool, id string, body *ast.BlockStmt) {
 	return true, i.Name, f.Body
 }
 
+func basicInt(i int) *ast.BasicLit {
+	return &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(i)}
+}
+
 func unrolled(f *ast.ForStmt, id string, body *ast.BlockStmt) ast.Stmt {
 	// Build:
 	// if b.N < 10 {
@@ -199,7 +204,7 @@ func unrolled(f *ast.ForStmt, id string, body *ast.BlockStmt) ast.Stmt {
 	//		// body
 	// 	}
 	// } else {
-	// 	for i := 0; i < b.N / 10; i++ {
+	// 	for i, bNUnroll := 0, b.N / 10; i < bNUnroll; i++ {
 	//   {
 	//     // body
 	//   }
@@ -236,17 +241,24 @@ func unrolled(f *ast.ForStmt, id string, body *ast.BlockStmt) ast.Stmt {
 	s.Else = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ForStmt{
-				Init: f.Init,
-				Cond: &ast.BinaryExpr{
-					X: ast.NewIdent(id),
-					Y: &ast.BinaryExpr{
-						Op: token.QUO,
-						X:  ast.NewIdent("b.N"), // cheat
-						Y: &ast.BasicLit{
-							Kind:  token.INT,
-							Value: "10",
+				Init: &ast.AssignStmt{
+					Lhs: []ast.Expr{
+						ast.NewIdent(id),
+						ast.NewIdent("bNUnroll"),
+					},
+					Tok: token.DEFINE,
+					Rhs: []ast.Expr{
+						basicInt(0),
+						&ast.BinaryExpr{
+							X:  ast.NewIdent("b.N"), // cheat
+							Y:  basicInt(10),
+							Op: token.QUO,
 						},
 					},
+				},
+				Cond: &ast.BinaryExpr{
+					X:  ast.NewIdent(id),
+					Y:  ast.NewIdent("bNUnroll"),
 					Op: token.LSS,
 				},
 				Post: f.Post,
